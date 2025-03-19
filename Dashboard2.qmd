@@ -7,7 +7,7 @@ editor: visual
 ## Quarto
 
 ```{r}
-library(shiny)
+library(shiny) 
 library(shinydashboard)
 library(readxl)
 library(phyloseq)
