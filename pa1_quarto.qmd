@@ -1,0 +1,96 @@
+---
+title: "microbiome_analyses"
+format: html
+editor: visual
+runtime: shiny
+---
+
+## Quarto
+
+```{r setup}
+#| echo: false
+## Load Libraries
+library(shiny)
+library(readxl)
+library(bslib)  # Für ein schöneres Theme
+library(phyloseq)
+```
+
+```{r}
+#| echo: false
+ui <- fluidPage(
+  titlePanel("Lade Metadata & Taxonomie Dateien hoch"),
+  
+  # File-Inputs nebeneinander
+  fluidRow(
+    column(6,
+           fileInput("metadata_file", "Wähle eine Metadata-Datei",
+                     accept = c(".xlsx", ".xls"),
+                     buttonLabel = "Durchsuchen...",
+                     placeholder = "Keine Datei ausgewählt")
+    ),
+    column(6,
+           fileInput("taxonomy_file", "Wähle eine Taxonomie-Datei",
+                     accept = c(".xlsx", ".xls"),
+                     buttonLabel = "Durchsuchen...",
+                     placeholder = "Keine Datei ausgewählt")
+    )
+  ),
+  
+  # Button zur Erstellung des Phyloseq-Objekts
+  actionButton("process_data", "Phyloseq-Objekt erstellen")
+)
+
+server <- function(input, output, session) {
+  # Reaktive Werte zum Speichern der Daten
+  metadata_data <- reactiveVal(NULL)
+  taxonomy_data <- reactiveVal(NULL)
+  
+  # Lade Metadata-Datei
+  observeEvent(input$metadata_file, {
+    req(input$metadata_file)
+    df <- read_excel(input$metadata_file$datapath)
+    df <- as.data.frame(df)
+    
+    # Spaltennamen anpassen & rownames setzen
+    colnames(df)[colnames(df) == "SampleID...1"] <- "SampleID"
+    rownames(df) <- df$SampleID
+    df <- df[, -1]  # Erste Spalte entfernen
+    
+    metadata_data(df)
+  })
+  
+  # Lade Taxonomie-Datei
+  observeEvent(input$taxonomy_file, {
+    req(input$taxonomy_file)
+    df <- read_excel(input$taxonomy_file$datapath)
+    df <- as.data.frame(df)
+    
+    # Nur relevante Spalten extrahieren
+    taxonomy <- df[, c("ID", "Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species", "Haplotype")]
+    rownames(taxonomy) <- taxonomy$ID
+    # taxonomy <- taxonomy[, -1]  # Falls ID-Spalte entfernt werden soll
+    
+    taxonomy_data(taxonomy)
+  })
+  
+  # Erstelle das Phyloseq-Objekt, wenn Button geklickt wird
+  observeEvent(input$process_data, {
+    req(metadata_data(), taxonomy_data())
+    
+    # Erstelle Phyloseq-Komponenten
+    otu_ps <- otu_table(matrix(nrow = 0, ncol = 0), taxa_are_rows = TRUE)  # Dummy OTU-Table (ersetzbar)
+    tax_ps <- tax_table(as.matrix(taxonomy_data()))
+    meta_ps <- sample_data(metadata_data())
+
+    # Phyloseq-Objekt erstellen
+    physeq <- phyloseq(otu_ps, tax_ps, meta_ps)
+    
+    # Debug: Zeige Sample-Namen in der Konsole
+    print(sample_names(meta_ps))
+    print(sample_names(otu_ps))
+  })
+}
+
+shinyApp(ui, server)
+```
