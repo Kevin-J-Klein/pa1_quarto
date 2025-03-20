@@ -39,7 +39,7 @@ This project aims to develop an automated reporting pipeline for microbiome data
 
 ### Programming Languages:
 
-- **Python (>= 3.8, recommended 3.10)**
+- **R**
 
 ### Libraries & Tools:
 
