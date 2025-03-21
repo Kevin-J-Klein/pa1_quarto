@@ -1,0 +1,258 @@
+---
+title: "nicolas_sandbox"
+format: html
+---
+
+```{r}
+library(shiny)
+library(shinydashboard)
+library(readxl)
+library(phyloseq)
+library(DT) # For interactive tables
+library(vegan)
+library(plotly) # For interactive graphs
+library(ggplot2) # Needed for creating ggplot objects
+library(shinycssloaders)
+library(later)
+
+options(shiny.trace = FALSE) # Activates debug logging for Shiny
+
+# UI definition
+ui <- dashboardPage(
+    dashboardHeader(title = "Microbiome Analysis"),
+    dashboardSidebar(
+        sidebarMenu(
+            menuItem("Daten hochladen", tabName = "upload", icon = icon("file-upload")),
+            menuItem("Alpha-Diversität", tabName = "alpha_diversity", icon = icon("chart-bar")),
+            menuItem("Rarefaction Curves", tabName = "rarefaction", icon = icon("chart-line")),
+            downloadButton("export_pdf", "Export als PDF")
+        )
+    ),
+    dashboardBody(
+        tabItems(
+            # Tab 1: Data Upload & Metadata Column Selection
+            tabItem(
+                tabName = "upload",
+                fluidRow(
+                    column(6, fileInput("metadata_file", "Metadata-Datei", accept = c(".xlsx", ".xls"))),
+                    column(6, fileInput("taxonomy_file", "Taxonomie-Datei", accept = c(".xlsx", ".xls")))
+                ),
+                actionButton("process_data", "Phyloseq-Objekt erstellen"),
+                uiOutput("physeqNotification"),
+                hr(),
+                fluidRow(
+                    box(title = "Metadata Spalten", width = 6, DTOutput("metadata_columns")),
+                    box(title = "Eindeutige Werte der gewählten Spalte", width = 6, tableOutput("unique_values"))
+                )
+            ),
+
+            # Tab 2: Alpha-Diversität (Interactive)
+            tabItem(
+                tabName = "alpha_diversity",
+                fluidRow(
+                    box(title = "Alpha-Diversität", width = 12, withSpinner(plotlyOutput("richness_plot")))
+                )
+            ),
+
+            # Tab 3: Rarefaction Curves (Interactive)
+            tabItem(
+                tabName = "rarefaction",
+                fluidRow(
+                    box(title = "Rarefaction Curves", width = 12, height = "1000px", withSpinner(plotlyOutput("rarefaction_plot")))
+                )
+            )
+        )
+    )
+)
+
+# Server definition
+server <- function(input, output, session) {
+    metadata_data <- reactiveVal(NULL)
+    taxonomy_data <- reactiveVal(NULL)
+    physeq_obj <- reactiveVal(NULL) # Stores phyloseq object
+    selected_column <- reactiveVal(NULL) # Column selected for grouping
+    unique_values <- reactiveVal(NULL)
+
+    # -- Data loading and selecting groups from metadata columns
+    observeEvent(input$metadata_file, {
+        req(input$metadata_file)
+        metadata <- read_excel(input$metadata_file$datapath) |> as.data.frame()
+        metadata_data(metadata)
+
+        # Show column names in a datatable
+        output$metadata_columns <- renderDT({
+            req(metadata_data())
+            datatable(
+                data.frame(Spaltennamen = colnames(metadata_data())),
+                selection = "single",
+                options = list(dom = "t", paging = FALSE)
+            )
+        })
+    })
+
+    # Store the selected column on row selection
+    observeEvent(input$metadata_columns_rows_selected, {
+        req(input$metadata_columns_rows_selected)
+        spaltenliste <- colnames(metadata_data())
+        selected_column(spaltenliste[input$metadata_columns_rows_selected])
+
+        print(paste("Gewählte Spalte:", selected_column()))
+
+        # Extract and store unique values
+        if (!is.null(selected_column()) && selected_column() %in% names(metadata_data())) {
+            print("Extrahiere eindeutige Werte...")
+            unique_vals <- unique(metadata_data()[[selected_column()]])
+            unique_values(unique_vals)
+            print("Gespeicherte eindeutige Werte:")
+            print(unique_values())
+        } else {
+            print("Fehler: Gewählte Spalte nicht in Metadaten gefunden oder NULL.")
+            unique_values(NULL)
+        }
+    })
+
+    # Display the selected column
+    output$selected_column <- renderText({
+        req(selected_column())
+        paste("Ausgewählte Spalte:", selected_column())
+    })
+
+    # Display unique values from the selected column
+    output$unique_values <- renderTable({
+        req(unique_values())
+        data.frame(Werte = unique_values())
+    })
+
+    observeEvent(input$taxonomy_file, {
+        req(input$taxonomy_file)
+        df <- read_excel(input$taxonomy_file$datapath) |> as.data.frame()
+        taxonomy_data(df)
+    })
+
+    # -- Create Phyloseq object
+    observeEvent(input$process_data, {
+        req(metadata_data(), taxonomy_data())
+
+        # Process metadata
+        metadata <- metadata_data()
+        colnames(metadata)[colnames(metadata) == "SampleID...1"] <- "SampleID"
+        rownames(metadata) <- metadata$SampleID
+
+        # Process OTU and taxonomy data
+        df <- taxonomy_data()
+        otu_table <- df[, grep("^S[0-9]+", names(df))]
+        rownames(otu_table) <- df$ID
+
+        taxonomy <- df[, c("ID", "Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species", "Haplotype")]
+        rownames(taxonomy) <- taxonomy$ID
+
+        tax_ps <- tax_table(as.matrix(taxonomy))
+        meta_ps <- sample_data(metadata)
+        otu_ps <- otu_table(as.matrix(otu_table), taxa_are_rows = TRUE)
+
+        physeq <- phyloseq(otu_ps, tax_ps, meta_ps)
+        physeq_obj(physeq)
+        print("Phyloseq object created.")
+
+        # Render a notification message directly beneath the button
+        output$physeqNotification <- renderUI({
+            div("Phyloseq object was successfully created!",
+                style = "color: green; font-weight: bold; margin-top: 10px;"
+            )
+        })
+        later::later(function() {
+            output$physeqNotification <- renderUI({
+                NULL
+            })
+        }, delay = 5)
+
+        # showNotification("Phyloseq object was successfully created!", type = "message", duration = 3)
+    })
+
+    # --- Interactive Alpha-Diversity Plot ---
+    output$richness_plot <- renderPlotly({
+        req(physeq_obj())
+        # plot_richness returns a ggplot object; convert it to interactive plotly object
+        p <- plot_richness(physeq_obj(), measures = c("Observed", "Shannon", "Simpson"))
+        ggplotly(p)
+    })
+
+    # --- Interactive Rarefaction Curves ---
+    output$rarefaction_plot <- renderPlotly({
+        req(physeq_obj())
+
+        # Convert OTU table to a matrix and print its dimensions for debugging
+        otu_table_matrix <- as(otu_table(physeq_obj()), "matrix")
+        dims <- dim(otu_table_matrix)
+        print(paste("OTU matrix dimensions:", dims[1], "rows x", dims[2], "columns"))
+
+        # Ensure we have sample names; if colnames are missing or empty, get them from phyloseq
+        sample_names_vec <- colnames(otu_table_matrix)
+        if (is.null(sample_names_vec) || length(sample_names_vec) == 0) {
+            sample_names_vec <- sample_names(physeq_obj())
+        }
+
+        # Prepare a list to store rarefaction data
+        rarefaction_data <- list()
+        # Use a separate index for appending data frames to avoid gaps in the list
+        list_index <- 1
+
+        # Loop over samples (columns) in the OTU table
+        for (i in 1:ncol(otu_table_matrix)) {
+            sample_counts <- otu_table_matrix[, i]
+            total <- sum(sample_counts)
+
+            # Skip this sample if the total count is zero
+            if (total == 0) next
+
+            # Create a sequence of sampling depths (using 100 as a step if possible)
+            steps <- if (total < 100) total else seq(100, total, by = 100)
+
+            # Compute rarefied richness for each sample size using vegan::rarefy
+            richness <- sapply(steps, function(s) {
+                if (s > total) NA else vegan::rarefy(sample_counts, sample = s)
+            })
+
+            # Ensure the sample name exists; if not, create a default name
+            sample_name <- if (i <= length(sample_names_vec)) sample_names_vec[i] else paste("Sample", i)
+
+            df <- data.frame(
+                Sample = sample_name,
+                SampleSize = steps,
+                Richness = richness
+            )
+            rarefaction_data[[list_index]] <- df
+            list_index <- list_index + 1
+        }
+
+        # If no valid samples were found, return NULL (or show a message)
+        if (length(rarefaction_data) == 0) {
+            return(NULL)
+        }
+
+        # Combine the list of data frames into a single data frame
+        rarefaction_df <- do.call(rbind, rarefaction_data)
+
+        # Create the ggplot for rarefaction curves and convert it to an interactive plotly object
+        p <- ggplot(rarefaction_df, aes(x = SampleSize, y = Richness, color = Sample)) +
+            geom_line() +
+            labs(title = "Rarefaction Curves at ASV Level", x = "Sample Size", y = "Richness") +
+            theme_minimal()
+
+        # ggplotly(p)
+        ggplotly(p) %>%
+            layout(
+                xaxis = list(
+                    type = "linear", # Ensure a linear scale
+                    tickmode = "linear", # Use evenly spaced ticks
+                    dtick = 100000, # Controls spacing between ticks (adjust as needed)
+                    tickformat = ",.0f", # Format numbers with commas and no decimals
+                    exponentformat = "none", # Turn off scientific notation
+                    showexponent = "none"
+                )
+            )
+    })
+}
+
+shinyApp(ui, server)
+```
