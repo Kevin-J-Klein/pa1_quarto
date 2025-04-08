@@ -36,21 +36,30 @@ accordion(
     id = "sidebar_accordion", # Optional ID for the accordion
     multiple = FALSE, # Allow only one panel open at a time
 
-    accordion_panel(
-        "Data Upload",
-        icon = bs_icon("cloud-upload"),
-        fileInput("otu_file", "1. OTU Table (.csv/.xlsx):",
-            accept = c(".csv", ".xlsx", "text/csv"),
-            width = "100%" 
-        ),
-        fileInput("metadata_file", "2. Metadata (.csv/.xlsx):",
-            accept = c(".csv", ".xlsx", "text/csv"),
-            width = "100%"
-        ),
-        # Keep sample check easily accessible after upload
-        verbatimTextOutput("sample_check"),
-        open = TRUE # Start with this panel open
-    ), # End Data Upload panel
+    # accordion_panel(
+    #     "Data Upload",
+    #     icon = bs_icon("cloud-upload"),
+    #     fileInput("otu_file", "1. OTU Table (.csv/.xlsx):",
+    #         accept = c(".csv", ".xlsx", "text/csv"),
+    #         width = "100%" 
+    #     ),
+    #     fileInput("metadata_file", "2. Metadata (.csv/.xlsx):",
+    #         accept = c(".csv", ".xlsx", "text/csv"),
+    #         width = "100%"
+    #     ),
+    #     # Keep sample check easily accessible after upload
+    #     verbatimTextOutput("sample_check"),
+    #     open = TRUE # Start with this panel open
+    # ), # End Data Upload panel
+    
+     accordion_panel(
+        "Export as PDF",
+        icon = bs_icon("download"),
+        radioButtons("export_format", "Export as:",
+                     choices = c("HTML", "PDF"),
+                     selected = "PDF"),
+        actionButton("export_button", "Download", width = "100%")
+    ) # End Export panel
 
 ) # End accordion
 ```
@@ -386,6 +395,76 @@ output$distPlot2 <- renderPlot({
    hist(x, breaks = bins, col = 'darkgray', border = 'white',
         xlab = 'Waiting time to next eruption (in mins)',
         main = 'Histogram of waiting times')
+})
+
+
+# ------- Report Export -----------------------------------
+observeEvent(input$export_button, {
+    export_format <- input$export_format
+
+    # Pfad zur Quarto-Vorlage
+    template_file <- "report_template.qmd" # Ersetze dies durch den tatsächlichen Pfad
+    report_basename <- paste0("dashboard_report_", format(Sys.time(), "%Y%m%d_%H%M%S"))
+    temp_dir <- tempdir()
+
+    # Erfasse die Parameter, die an die Quarto-Vorlage übergeben werden sollen
+    params <- list(
+        richness_plot = plotlyOutput("richness_plot"), # So funktioniert es nicht direkt
+        rarefaction_plot_asv = plotlyOutput("rarefaction_plot"), # So funktioniert es nicht direkt
+        rarefaction_plot_species = plotOutput("rarefaction_plot_spec"), # So funktioniert es nicht direkt
+        metadata_table = output$metadata_columns # So funktioniert es nicht direkt
+        # Füge hier weitere Parameter hinzu, die in der Vorlage verwendet werden sollen
+    )
+
+    if (export_format == "html") {
+        output_format <- "html"
+        report_filename <- paste0(report_basename, ".html")
+    } else if (export_format == "pdf") {
+        output_format <- "pdf"
+        report_filename <- paste0(report_basename, ".pdf")
+    } else {
+        showNotification("Ungültiges Exportformat.", type = "error")
+        return()
+    }
+
+    # Führe Quarto Rendering aus
+    tryCatch({
+        quarto::quarto_render(
+            input = template_file,
+            output_file = report_filename,
+            execute_params = params,
+            output_format = output_format,
+            output_dir = temp_dir,
+            quiet = TRUE
+        )
+
+        # Biete die generierte Datei zum Download an
+        output$download_report <- downloadHandler(
+            filename = report_filename,
+            content = function(file) {
+                file.copy(file.path(temp_dir, report_filename), file)
+            }
+        )
+        session$sendCustomMessage("download", list(filename = report_filename))
+
+    }, error = function(e) {
+        showNotification(paste("Fehler beim Rendern des Berichts:", e$message), type = "error", duration = 10)
+    })
+})
+
+# Hilfsausgabe für den Download
+output$download_report <- downloadHandler(
+    filename = "dummy.txt",
+    content = function(file) {
+        writeLines("Download vorbereitet...", file)
+    }
+)
+
+# JavaScript, um den Download auszulösen
+observe({
+    if (!is.null(input$export_button)) {
+        session$sendCustomMessage("download", list(filename = paste0("dashboard_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".", tolower(input$export_format))))
+    }
 })
 
 

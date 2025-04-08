@@ -1,0 +1,36 @@
+---
+title: "Microbiome Report"
+date: today
+format: pdf
+params:
+  richness_data: null
+---
+
+# Alpha Diversität
+
+## Richness Measures
+
+```{r}
+#| label: richness-plot
+#| fig-cap: "Alpha Diversität (Richness Measures)"
+library(ggplot2)
+
+# Überprüfe, ob Daten für den Plot übergeben wurden
+if (!is.null(params$richness_data)) {
+  # Stelle sicher, dass die Daten ein DataFrame sind
+  richness_df <- as.data.frame(params$richness_data)
+
+  # Erstelle den ggplot
+  p <- ggplot(richness_df, aes(x = Sample, y = Value, fill = Measure)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    facet_wrap(~ Measure, scales = "free_y") +
+    labs(x = "Sample", y = "Value", fill = "Measure") +
+    theme_minimal()
+
+  # Gib den ggplot aus (für PDF-Erstellung)
+  print(p)
+} else {
+  # Zeige eine Meldung an, wenn keine Daten vorhanden sind
+  cat("Keine Daten für den Richness Plot verfügbar.")
+}
+
