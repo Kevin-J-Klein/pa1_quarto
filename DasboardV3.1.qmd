@@ -398,65 +398,60 @@ output$distPlot2 <- renderPlot({
 })
 
 # ------- Report Export -----------------------------------
-#| context: server
+
 # Ermittle das Arbeitsverzeichnis der Shiny-Anwendung
 app_dir <- getwd()
 
 observeEvent(input$export_button, {
-    export_format <- input$export_format
+  export_format <- input$export_format
+  template_file <- file.path(app_dir, "report_template.qmd")
+  report_basename <- paste0("dashboard_report_", format(Sys.time(), "%Y%m%d_%H%M%S"))
+  report_filename <- paste0(report_basename, ".", tolower(export_format))
+  
+  if (export_format == "html") {
+    output_format <- "html"
+  } else if (export_format == "pdf") {
+    output_format <- "pdf"
+  } else {
+    showNotification("Ungültiges Exportformat.", type = "error")
+    return()
+  }
 
-    # Pfad zur Test-Quarto-Vorlage (vollständig)
-    template_file <- file.path(app_dir, "test_report.qmd")
-    report_basename <- paste0("dashboard_report_", format(Sys.time(), "%Y%m%d_%H%M%S"))
-    temp_dir <- tempdir()
-    report_filename <- paste0(report_basename, ".", tolower(export_format))
+  # Serialize and base64 encode phyloseq object
+  physeq_serialized <- serialize(physeq_obj(), NULL)
+  physeq_b64 <- base64enc::base64encode(physeq_serialized)
 
-    # Leere Parameter (zum Testen)
-    params <- list()
+  # Define parameters to pass to Quarto
+  params <- list(
+    physeq_b64 = physeq_b64
+  )
 
-    if (export_format == "html") {
-        output_format <- "html"
-    } else if (export_format == "pdf") {
-        output_format <- "pdf"
-    } else {
-        showNotification("Ungültiges Exportformat.", type = "error")
-        return()
-    }
+  print("EXPORT REPORT Quarto")
+  print("Base64 encoded phyloseq object length:")
+  print(nchar(physeq_b64))
 
-    # Speichere das aktuelle Arbeitsverzeichnis
-    original_wd <- getwd()
-
-    # Ändere das Arbeitsverzeichnis auf das temporäre Verzeichnis
-    #setwd(temp_dir)
-
-    # Führe Quarto Rendering aus
-    tryCatch({
-        quarto::quarto_render(
-            input = template_file,
-            output_file = report_filename,
-            execute_params = params,
-            output_format = output_format,
-            quiet = FALSE
-        )
-
-        #ToDo: Downlaod funktioniert noch nicht
-        # Biete die generierte Datei zum Download an
-        output$download_report <- downloadHandler(
-            filename = report_filename,
-            contentType = if (export_format == "pdf") "application/pdf" else "text/html",
-            content = function(file) {
-                file.copy(file.path(original_wd, report_filename), file, overwrite = TRUE) # eigentlich temp_dir
-            }
-        )
-
-    }, error = function(e) {
-        showNotification(paste("Fehler beim Rendern des Berichts:", e$message), type = "error", duration = 10)
-        print(e)
-    }, finally = {
-        # Setze das Arbeitsverzeichnis immer zurück
-        setwd(original_wd)
-    })
+  tryCatch({
+    quarto::quarto_render(
+      input = template_file,
+      output_file = report_filename,
+      execute_params = params,
+      output_format = output_format,
+      quiet = FALSE
+    )
+    
+    output$download_report <- downloadHandler(
+      filename = report_filename,
+      contentType = if (export_format == "pdf") "application/pdf" else "text/html",
+      content = function(file) {
+        file.copy(report_filename, file, overwrite = TRUE)
+      }
+    )
+  }, error = function(e) {
+    showNotification(paste("Fehler beim Rendern des Berichts:", e$message), type = "error", duration = 10)
+    print(e)
+  })
 })
+
 
 # JavaScript, um den Download auszulösen
 observe({

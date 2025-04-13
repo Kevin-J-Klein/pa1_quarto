@@ -1,36 +1,30 @@
 ---
-title: "Microbiome Report"
-date: today
-format: pdf
+title: "Dashboard Report"
+format: 
+  pdf: default
 params:
-  richness_data: null
+  physeq_b64: ""
 ---
 
-# Alpha Diversität
+```{r, echo=FALSE, message=TRUE}
+# Lade nötige Pakete
+library(phyloseq)
+library(base64enc)
 
-## Richness Measures
+print("me gusta")
 
-```{r}
-#| label: richness-plot
-#| fig-cap: "Alpha Diversität (Richness Measures)"
-library(ggplot2)
+# Decode and unserialize phyloseq object
+physeq_serialized <- base64decode(params$physeq_b64)
+physeq <- unserialize(physeq_serialized)
 
-# Überprüfe, ob Daten für den Plot übergeben wurden
-if (!is.null(params$richness_data)) {
-  # Stelle sicher, dass die Daten ein DataFrame sind
-  richness_df <- as.data.frame(params$richness_data)
+# Optional: Inspect the phyloseq object
+print(physeq)
 
-  # Erstelle den ggplot
-  p <- ggplot(richness_df, aes(x = Sample, y = Value, fill = Measure)) +
-    geom_bar(stat = "identity", position = "dodge") +
-    facet_wrap(~ Measure, scales = "free_y") +
-    labs(x = "Sample", y = "Value", fill = "Measure") +
-    theme_minimal()
 
-  # Gib den ggplot aus (für PDF-Erstellung)
-  print(p)
-} else {
-  # Zeige eine Meldung an, wenn keine Daten vorhanden sind
-  cat("Keine Daten für den Richness Plot verfügbar.")
-}
+# Plot richness measures
+p <- plot_richness(physeq, measures = c("Observed", "Shannon", "Simpson"))
 
+# Optional: Plot ausgeben
+print(p)
+
+```
