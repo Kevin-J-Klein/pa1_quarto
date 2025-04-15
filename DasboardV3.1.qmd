@@ -67,7 +67,7 @@ accordion(
 # File Upload
 
 
-## Column {width="60%"}
+## Column {width="80%"}
 
 ```{r}
 card(
@@ -100,10 +100,34 @@ card(
     DTOutput("metadata_columns") # Output the metadata columns in a table
 )
 
+
+
 card(
     full_screen = TRUE,
-    card_header("Metadata"),
-    uiOutput("metadata_group_ui")
+    card_header("Group Selection"),
+    layout_columns( # Use layout_columns for side-by-side inside card
+        col_widths = c(6, 6), # Both columns take up 50% width each
+        card(
+            full_screen = TRUE,
+            card_header("Metadata"),
+            uiOutput("metadata_group_ui")
+        ),
+        card(
+            card_header("Selected Groups"),
+            # Bitte hier die Unique werte von der ausgwählten spalte von metadata_group_ui anzeigen
+            uiOutput("selected_group_values") # Display unique values here
+        )
+    )
+)
+
+card(
+    card_header("Selected Groups"),
+    plotlyOutput("total_counts_per_group_boxplot") # Boxplot here
+)
+
+card(
+    card_header("Read Counts per Sample"),
+    DTOutput("read_counts_table")
 )
 
 
@@ -128,17 +152,73 @@ observeEvent(input$metadata_file, {
   })
 })
 
+
+# --- Store Unique Values and Create Boxplot Data ---
+unique_group_values <- reactive({
+    req(physeq_obj(), input$metadata_group)
+
+    selected_column <- input$metadata_group
+    unique_values <- unique(sample_data(physeq_obj())[[selected_column]])
+    return(unique_values)
+})
+
+boxplot_data <- reactive({
+    req(physeq_obj(), input$metadata_group)
+
+    ps <- physeq_obj()
+    selected_column <- input$metadata_group
+
+    # Calculate total counts per sample
+    otu_table_matrix <- as(otu_table(ps), "matrix")
+    total_counts_per_sample <- colSums(otu_table_matrix)
+
+    # Get sample names
+    sample_names <- colnames(otu_table_matrix)
+    if (is.null(sample_names)) {
+        sample_names <- sample_names(ps)
+    }
+
+    # Get grouping variable
+    grouping_variable <- sample_data(ps)[[selected_column]]
+
+    # Create data frame for boxplot
+    boxplot_df <- data.frame(
+        Sample = sample_names,
+        TotalCounts = total_counts_per_sample,
+        Group = grouping_variable
+    )
+
+    return(boxplot_df)
+})
+
+# Display Unique Values
+output$selected_group_values <- renderUI({
+  req(physeq_obj(), input$metadata_group) # Ensure phyloseq object and group selection are available
+
+  selected_column <- input$metadata_group
+  unique_values <- unique(sample_data(physeq_obj())[[selected_column]])
+
+  # Format the unique values for display (e.g., as a bulleted list)
+  value_list <- tags$ul(
+    lapply(unique_values, tags$li)
+  )
+
+  tags$div(
+    value_list
+  )
+})
+
 ```
 
-# Dashboard
+# Alpha- Betadiversität
 
 ## Column {width="50%"}
 
 ```{r}
 card(
-    full_screen = TRUE,
-    card_header("Metadata"),
-    uiOutput("metadata_group_ui")
+    # full_screen = TRUE,
+    # card_header("Metadata"),
+    # uiOutput("metadata_group_ui")
 )
 
 card(
@@ -155,8 +235,8 @@ card(
     layout_columns( # Use layout_columns for side-by-side inside card
         col_widths = c(12, 6), # Adjust widths as needed
         card(
-            card_header("Read Counts per Sample"),
-            DTOutput("read_counts_table")
+            # card_header("Read Counts per Sample"),
+            # DTOutput("read_counts_table")
         )
     ), # End layout_columns
     card( # Alpha diversity below the first row
@@ -274,6 +354,49 @@ output$metadata_group_ui <- renderUI({
     selectInput("metadata_group", "Groups", choices = meta_vars, selected = selected_var)
 })
 
+# Basic Statistics
+
+# --- Boxplot of Total Counts per Group ---
+output$total_counts_per_group_boxplot <- renderPlotly({
+    req(boxplot_data())
+
+    p <- ggplot(boxplot_data(), aes(x = Group, y = TotalCounts)) +
+        geom_boxplot() +
+        labs(title = "Total Counts per Group", x = input$metadata_group, y = "Total Counts") +
+        theme_minimal()
+
+    ggplotly(p)
+})
+
+# --- Read Counts Table ---
+output$read_counts_table <- renderDT({
+    req(physeq_obj()) # Ensure physeq object is available
+
+    # Get the OTU table as a matrix
+    otu_table_matrix <- as(otu_table(physeq_obj()), "matrix")
+
+    # Calculate the total reads per sample (column sums)
+    read_counts <- colSums(otu_table_matrix)
+
+    # Create a data frame with sample names and read counts
+    sample_names <- colnames(otu_table_matrix)
+    if (is.null(sample_names)) {
+        sample_names <- sample_names(physeq_obj()) # Fallback in case colnames are missing
+    }
+    read_counts_df <- data.frame(Sample = sample_names, ReadCount = read_counts)
+
+    # Render the data frame as a DataTable
+    datatable(read_counts_df,
+              options = list(
+                  pageLength = 10, # Show 10 rows per page
+                  searching = TRUE, # Enable searching
+                  ordering = TRUE  # Enable sorting
+              ),
+              rownames = FALSE # Do not show row names
+    )
+})
+
+# Alphadiversität
 output$richness_plot <- renderPlotly({
   req(physeq_obj())  # Sicherstellen, dass physeq existiert
   p <- plot_richness(physeq_obj(), measures = c("Observed", "Shannon", "Simpson"))
