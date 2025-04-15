@@ -94,7 +94,7 @@ card(
         card(
             full_screen = TRUE,
             card_header("Metadata"),
-            uiOutput("metadata_group_ui")
+            uiOutput("metadata_columns_dd")
         ),
         card(
             card_header("Selected Groups"),
@@ -201,7 +201,7 @@ output$selected_group_values <- renderUI({
 card(
     # full_screen = TRUE,
     # card_header("Metadata"),
-    # uiOutput("metadata_group_ui")
+    # uiOutput("metadata_columns_dd")
 )
 
 card(
@@ -275,6 +275,16 @@ card(
 )
 ```
 
+# Differential abundance
+
+## Column {width="80%"}
+```{r}
+card(
+  full_screen = TRUE,
+  card_header("Volcano Plot")
+)
+```
+
 ```{r}
 #| context: server
 
@@ -328,13 +338,14 @@ physeq_obj <- reactive({
     return(ps)
 })
 
-output$metadata_group_ui <- renderUI({
+output$metadata_columns_dd <- renderUI({
     ps <- physeq_obj()
-    validate(need(!is.null(ps), "Waiting for data upload..."))
-    meta_vars <- names(sample_data(ps))
-    potential_factors <- meta_vars[sapply(sample_data(ps), function(x) is.character(x) || is.factor(x))]
-    selected_var <- if (length(potential_factors) > 0) potential_factors[[1]] else meta_vars[[1]]
-    selectInput("metadata_group", "Groups", choices = meta_vars, selected = selected_var)
+    validate(need(!is.null(ps), "Test")) #Ensure data is loaded before proceeding
+    metadata_var <- names(sample_data(ps))
+    categorical_variables <- metadata_var[sapply(sample_data(ps), function(x) is.character(x) || is.factor(x))] #Filter for categorical variables
+    selected_var <- if (length(categorical_variables) > 0) categorical_variables[[1]] else metadata_var[[1]]
+    #Create the selectInput dropdown
+    selectInput("metadata_group", "Groups", choices = metadata_var, selected = selected_var)
 })
 
 # Basic Statistics

@@ -35,6 +35,22 @@ options(shiny.trace = TRUE)  # Aktiviert Debug-Logging für Shiny
 accordion(
     id = "sidebar_accordion", # Optional ID for the accordion
     multiple = FALSE, # Allow only one panel open at a time
+
+    # accordion_panel(
+    #     "Data Upload",
+    #     icon = bs_icon("cloud-upload"),
+    #     fileInput("otu_file", "1. OTU Table (.csv/.xlsx):",
+    #         accept = c(".csv", ".xlsx", "text/csv"),
+    #         width = "100%" 
+    #     ),
+    #     fileInput("metadata_file", "2. Metadata (.csv/.xlsx):",
+    #         accept = c(".csv", ".xlsx", "text/csv"),
+    #         width = "100%"
+    #     ),
+    #     # Keep sample check easily accessible after upload
+    #     verbatimTextOutput("sample_check"),
+    #     open = TRUE # Start with this panel open
+    # ), # End Data Upload panel
     
      accordion_panel(
         "Export as PDF",
@@ -98,7 +114,8 @@ card(
         ),
         card(
             card_header("Selected Groups"),
-            uiOutput("selected_group_values") # Display unique values of Selected Metadata
+            # Bitte hier die Unique werte von der ausgwählten spalte von metadata_group_ui anzeigen
+            uiOutput("selected_group_values") # Display unique values here
         )
     )
 )
