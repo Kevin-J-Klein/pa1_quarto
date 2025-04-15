@@ -100,6 +100,13 @@ card(
     DTOutput("metadata_columns") # Output the metadata columns in a table
 )
 
+card(
+    full_screen = TRUE,
+    card_header("Metadata"),
+    uiOutput("metadata_group_ui")
+)
+
+
 ```
 
 ```{r}
@@ -130,7 +137,7 @@ observeEvent(input$metadata_file, {
 ```{r}
 card(
     full_screen = TRUE,
-    card_header("Select Grouping Variable"),
+    card_header("Metadata"),
     uiOutput("metadata_group_ui")
 )
 
@@ -144,7 +151,7 @@ card(
 ```{r}
 card(
     full_screen = TRUE,
-    card_header("Data Summary & Alpha Diversity"),
+    card_header("Alpha Diversity"),
     layout_columns( # Use layout_columns for side-by-side inside card
         col_widths = c(12, 6), # Adjust widths as needed
         card(
@@ -264,7 +271,7 @@ output$metadata_group_ui <- renderUI({
     meta_vars <- names(sample_data(ps))
     potential_factors <- meta_vars[sapply(sample_data(ps), function(x) is.character(x) || is.factor(x))]
     selected_var <- if (length(potential_factors) > 0) potential_factors[[1]] else meta_vars[[1]]
-    selectInput("metadata_group", "Group by (for Viz):", choices = meta_vars, selected = selected_var)
+    selectInput("metadata_group", "Groups", choices = meta_vars, selected = selected_var)
 })
 
 output$richness_plot <- renderPlotly({
